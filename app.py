@@ -1,21 +1,11 @@
-import os
-import sys
 import streamlit as st
 from PIL import Image
 
 # ============================================================
-# 🔧 FIX PYTHON PATH (CRITICAL FOR STREAMLIT CLOUD)
+# CORRECT IMPORTS (MATCH PROJECT STRUCTURE)
 # ============================================================
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-# ============================================================
-# IMPORTS (NOW SAFE)
-# ============================================================
-
-from classifiers.classifier import classify_image
+from classification.classifier import classify_image
 from detection.yolo_detect import detect_image_pil
 
 # ============================================================
@@ -78,7 +68,9 @@ def home_page():
 def classification_page():
     st.title("Image Classification")
 
-    st.markdown("Upload an image to classify it using ImageNet-trained models.")
+    st.markdown(
+        "Upload an image to classify it using ImageNet-trained models."
+    )
 
     uploaded_file = st.file_uploader(
         "",
@@ -143,7 +135,9 @@ def detection_page():
             st.warning("No objects detected above the confidence threshold.")
         else:
             for d in detections:
-                st.write(f"**{d['class']}** — {d['confidence']:.2f}")
+                st.write(
+                    f"**{d['class']}** — {d['confidence']:.2f}"
+                )
 
 # ============================================================
 # MODEL COMPARISON
@@ -153,6 +147,7 @@ def model_comparison_page():
     st.title("Model Comparison")
 
     st.markdown("### Classification Models")
+
     st.markdown(
         """
         • VGG16  
@@ -163,7 +158,10 @@ def model_comparison_page():
     )
 
     st.markdown("### Detection Model")
-    st.markdown("• YOLOv8 (ONNX Runtime, CPU-only)")
+
+    st.markdown(
+        "• YOLOv8 (ONNX Runtime, CPU-only)"
+    )
 
 # ============================================================
 # ABOUT
