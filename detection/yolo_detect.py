@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw
 import streamlit as st
 
 # -----------------------------------------------------------------------------
-# COCO CLASS LABELS (YOLOv8)
+# COCO LABELS
 # -----------------------------------------------------------------------------
 COCO_CLASSES = [
     "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
@@ -24,8 +24,6 @@ MODEL_PATH = "yolov8n.onnx"
 IMG_SIZE = 640
 
 # -----------------------------------------------------------------------------
-# LOAD ONNX SESSION
-# -----------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_session():
     return ort.InferenceSession(
@@ -33,8 +31,6 @@ def load_session():
         providers=["CPUExecutionProvider"]
     )
 
-# -----------------------------------------------------------------------------
-# PREPROCESS
 # -----------------------------------------------------------------------------
 def preprocess(img: Image.Image):
     img = img.resize((IMG_SIZE, IMG_SIZE))
@@ -44,17 +40,14 @@ def preprocess(img: Image.Image):
     return arr
 
 # -----------------------------------------------------------------------------
-# NMS
-# -----------------------------------------------------------------------------
 def nms(boxes, scores, iou_thresh=0.45):
     idxs = scores.argsort()[::-1]
     keep = []
 
-    while idxs.size > 0:
+    while len(idxs) > 0:
         i = idxs[0]
         keep.append(i)
-
-        if idxs.size == 1:
+        if len(idxs) == 1:
             break
 
         xx1 = np.maximum(boxes[i, 0], boxes[idxs[1:], 0])
@@ -73,8 +66,6 @@ def nms(boxes, scores, iou_thresh=0.45):
     return keep
 
 # -----------------------------------------------------------------------------
-# YOLOv8 ONNX DETECTION (CORRECT)
-# -----------------------------------------------------------------------------
 def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     session = load_session()
     orig_w, orig_h = img.size
@@ -84,12 +75,19 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     boxes, scores, labels = [], [], []
 
     for p in preds:
-        if len(p) < 6:
+        if p.shape[0] < 6:
             continue
 
-        class_scores = p[4:]
-        cls_id = int(np.argmax(class_scores))
-        score = float(class_scores[cls_id])
+        # Detect layout
+        if p.shape[0] == 85:
+            obj_conf = p[4]
+            class_scores = p[5:]
+            score = obj_conf * class_scores.max()
+            cls_id = int(np.argmax(class_scores))
+        else:
+            class_scores = p[4:]
+            score = class_scores.max()
+            cls_id = int(np.argmax(class_scores))
 
         if score < conf_thresh:
             continue
@@ -101,15 +99,13 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
         )
 
         x, y, w, h = p[:4]
-
-        # Scale from 640 → original image
         x1 = (x - w / 2) * orig_w / IMG_SIZE
         y1 = (y - h / 2) * orig_h / IMG_SIZE
         x2 = (x + w / 2) * orig_w / IMG_SIZE
         y2 = (y + h / 2) * orig_h / IMG_SIZE
 
         boxes.append([x1, y1, x2, y2])
-        scores.append(score)
+        scores.append(float(score))
         labels.append(label)
 
     if not boxes:
