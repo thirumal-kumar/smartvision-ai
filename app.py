@@ -1,162 +1,167 @@
+import os
 import streamlit as st
+import torch
 from PIL import Image
-
-# ============================================================
-# CORRECT PACKAGE IMPORTS
-# ============================================================
+from torchvision import models, transforms
 
 from detection.yolo_detect import detect_image_pil
 
-# ============================================================
-# PAGE CONFIG
-# ============================================================
-
+# ------------------------------------------------------------
+# Page config
+# ------------------------------------------------------------
 st.set_page_config(
     page_title="SmartVision AI",
-    page_icon="🧠",
     layout="wide"
 )
 
-# ============================================================
-# SIDEBAR
-# ============================================================
+# ------------------------------------------------------------
+# ImageNet labels
+# ------------------------------------------------------------
+with open("imagenet_classes.txt") as f:
+    IMAGENET_CLASSES = [line.strip() for line in f]
 
-st.sidebar.title("Navigation")
-page = st.sidebar.radio(
-    "Go to",
-    [
-        "Home",
-        "Image Classification",
-        "Object Detection",
-        "Model Comparison",
-        "About"
+# ------------------------------------------------------------
+# Classification models (lazy loaded)
+# ------------------------------------------------------------
+@st.cache_resource
+def load_classification_models():
+    return {
+        "VGG16": models.vgg16(
+            weights=models.VGG16_Weights.IMAGENET1K_V1
+        ).eval(),
+        "ResNet50": models.resnet50(
+            weights=models.ResNet50_Weights.IMAGENET1K_V2
+        ).eval(),
+        "MobileNetV2": models.mobilenet_v2(
+            weights=models.MobileNet_V2_Weights.IMAGENET1K_V1
+        ).eval(),
+        "EfficientNetB0": models.efficientnet_b0(
+            weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1
+        ).eval(),
+    }
+
+CLASSIFICATION_MODELS = load_classification_models()
+
+_transform = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+])
+
+# ------------------------------------------------------------
+# 🔑 THIS FUNCTION WAS MISSING — RESTORED
+# ------------------------------------------------------------
+def classify_image(pil_image, model_name="ResNet50", topk=5):
+    model = CLASSIFICATION_MODELS[model_name]
+    img = _transform(pil_image).unsqueeze(0)
+
+    with torch.no_grad():
+        outputs = model(img)
+        probs = torch.nn.functional.softmax(outputs[0], dim=0)
+
+    top_probs, top_idxs = probs.topk(topk)
+    return [
+        (IMAGENET_CLASSES[idx], float(prob))
+        for idx, prob in zip(top_idxs, top_probs)
     ]
-)
 
-# ============================================================
-# HOME
-# ============================================================
-
+# ------------------------------------------------------------
+# Pages
+# ------------------------------------------------------------
 def home_page():
     st.title("SmartVision AI")
-
-    st.markdown(
-        """
-        **SmartVision AI** is a **deployment-grade computer vision system**.
-        """
-    )
-
-    st.markdown("### Features")
-
-    st.markdown(
-        """
-        • Image Classification (ImageNet CNNs)  
-        • Object Detection (YOLOv8 – ONNX Runtime)  
-        • CPU-only, Streamlit-Cloud safe  
-        """
-    )
-
-    st.info("Designed for real-world inference, not demos.")
-
-# ============================================================
-# IMAGE CLASSIFICATION
-# ============================================================
+    st.write("SmartVision AI is a deployment-grade computer vision system.")
+    st.markdown("""
+**Features**
+- Image Classification (ImageNet CNNs)
+- Object Detection (YOLOv8 – ONNX Runtime)
+- CPU-only, Streamlit-Cloud safe
+""")
 
 def classification_page():
-    st.title("Image Classification")
+    st.header("Image Classification")
+    uploaded = st.file_uploader(
+        "Upload an image",
+        type=["jpg", "jpeg", "png"]
+    )
 
-    st.markdown("Upload an image to classify it using ImageNet-trained models.")
-
-    uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"])
-
-    if uploaded_file:
-        img = Image.open(uploaded_file).convert("RGB")
+    if uploaded:
+        img = Image.open(uploaded).convert("RGB")
         st.image(img, caption="Input Image", use_container_width=True)
 
+        model_name = st.selectbox(
+            "Select Model",
+            list(CLASSIFICATION_MODELS.keys())
+        )
+
         with st.spinner("Running image classification..."):
-            results = classify_image(img)
+            results = classify_image(img, model_name)
 
         st.subheader("Top-5 Predictions (ImageNet)")
-
-        cols = st.columns(len(results))
-        for col, (model, preds) in zip(cols, results.items()):
-            with col:
-                st.markdown(f"**{model}**")
-                for label, score in preds:
-                    st.write(f"{label} — {score:.3f}")
-
-# ============================================================
-# OBJECT DETECTION
-# ============================================================
+        for label, score in results:
+            st.write(f"{label} — {score:.3f}")
 
 def detection_page():
-    st.title("Object Detection")
+    st.header("Object Detection – YOLOv8 (ONNX)")
+    uploaded = st.file_uploader(
+        "Upload an image",
+        type=["jpg", "jpeg", "png"]
+    )
 
-    st.markdown("YOLOv8 (ONNX Runtime, CPU-only)")
+    conf = st.slider(
+        "Confidence Threshold",
+        0.1, 0.9, 0.25
+    )
 
-    conf = st.slider("Confidence Threshold", 0.05, 0.95, 0.25, 0.05)
+    if uploaded:
+        img = Image.open(uploaded).convert("RGB")
 
-    uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"])
-
-    if uploaded_file:
-        img = Image.open(uploaded_file).convert("RGB")
-
-        with st.spinner("Running object detection..."):
-            detections, vis_img = detect_image_pil(img, conf)
-
+        detections, vis_img = detect_image_pil(img, conf)
         st.image(vis_img, caption="Detection Output", use_container_width=True)
 
         st.subheader("Detection Results")
+        for d in detections:
+            st.write(f"{d['label']} — {d['confidence']:.2f}")
 
-        if not detections:
-            st.warning("No objects detected.")
-        else:
-            for d in detections:
-                st.write(f"**{d['class']}** — {d['confidence']:.2f}")
+def comparison_page():
+    st.header("Model Comparison")
+    st.markdown("""
+**Classification Models**
+- VGG16  
+- ResNet50  
+- MobileNetV2  
+- EfficientNetB0  
 
-# ============================================================
-# MODEL COMPARISON
-# ============================================================
-
-def model_comparison_page():
-    st.title("Model Comparison")
-
-    st.markdown("### Classification Models")
-    st.markdown(
-        """
-        • VGG16  
-        • ResNet50  
-        • MobileNetV2  
-        • EfficientNetB0  
-        """
-    )
-
-    st.markdown("### Detection Model")
-    st.markdown("• YOLOv8 (ONNX Runtime, CPU-only)")
-
-# ============================================================
-# ABOUT
-# ============================================================
+**Detection Model**
+- YOLOv8 (ONNX Runtime, CPU)
+""")
 
 def about_page():
-    st.title("About SmartVision AI")
+    st.header("About SmartVision AI")
+    st.markdown("""
+SmartVision AI is designed for real-world deployment, not demos.
 
-    st.markdown(
-        """
-        SmartVision AI is built for **deployment**, not experimentation.
+- ONNX inference  
+- No OpenCV dependency  
+- Cloud-safe architecture
+""")
 
-        • ONNX inference  
-        • No OpenCV dependency  
-        • Cloud-safe  
-        • CPU-only  
-        """
+# ------------------------------------------------------------
+# Main navigation
+# ------------------------------------------------------------
+def main():
+    st.sidebar.title("Navigation")
+    page = st.sidebar.radio(
+        "Go to",
+        [
+            "Home",
+            "Image Classification",
+            "Object Detection",
+            "Model Comparison",
+            "About"
+        ]
     )
 
-# ============================================================
-# ROUTER
-# ============================================================
-
-def main():
     if page == "Home":
         home_page()
     elif page == "Image Classification":
@@ -164,7 +169,7 @@ def main():
     elif page == "Object Detection":
         detection_page()
     elif page == "Model Comparison":
-        model_comparison_page()
+        comparison_page()
     elif page == "About":
         about_page()
 
