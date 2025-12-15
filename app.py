@@ -1,32 +1,16 @@
-# app.py
 import streamlit as st
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 from classification.models_loader import predict_topk
 from detection.yolo_detect import detect_image_pil
 
 # -----------------------------------------------------------------------------
-# COCO LABELS (YOLOv8)
-# -----------------------------------------------------------------------------
-COCO_CLASSES = [
-    "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
-    "traffic light","fire hydrant","stop sign","parking meter","bench","bird","cat",
-    "dog","horse","sheep","cow","elephant","bear","zebra","giraffe","backpack",
-    "umbrella","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball",
-    "kite","baseball bat","baseball glove","skateboard","surfboard","tennis racket",
-    "bottle","wine glass","cup","fork","knife","spoon","bowl","banana","apple",
-    "sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake","chair",
-    "couch","potted plant","bed","dining table","toilet","tv","laptop","mouse",
-    "remote","keyboard","cell phone","microwave","oven","toaster","sink",
-    "refrigerator","book","clock","vase","scissors","teddy bear","hair drier",
-    "toothbrush"
-]
-
-# -----------------------------------------------------------------------------
 # PAGE CONFIG
 # -----------------------------------------------------------------------------
-st.set_page_config(page_title="SmartVision AI", layout="wide")
-APP_TITLE = "SmartVision AI – Intelligent Vision System"
+st.set_page_config(
+    page_title="SmartVision AI",
+    layout="wide",
+)
 
 # -----------------------------------------------------------------------------
 # SIDEBAR
@@ -40,22 +24,25 @@ def sidebar():
             "Image Classification",
             "Object Detection (YOLOv8 ONNX)",
             "Model Comparison",
-            "About"
-        ]
+            "About",
+        ],
     )
 
 # -----------------------------------------------------------------------------
 # HOME
 # -----------------------------------------------------------------------------
 def home_page():
-    st.title(APP_TITLE)
-    st.markdown("""
-    **SmartVision AI** demonstrates deployment-grade vision pipelines.
+    st.title("SmartVision AI")
+    st.markdown(
+        """
+        **SmartVision AI** is a deployment-grade computer vision system.
 
-    - Image Classification (CNNs)
-    - Object Detection (YOLOv8 – ONNX Runtime)
-    - CPU-only, cloud-safe deployment
-    """)
+        **Features**
+        - Image Classification (ImageNet CNNs)
+        - Object Detection (YOLOv8 – ONNX Runtime)
+        - CPU-only, Streamlit-Cloud safe
+        """
+    )
 
 # -----------------------------------------------------------------------------
 # IMAGE CLASSIFICATION
@@ -63,21 +50,25 @@ def home_page():
 def classification_page():
     st.header("Image Classification")
 
-    uploaded = st.file_uploader("Upload an image", ["jpg", "jpeg", "png"])
+    uploaded = st.file_uploader(
+        "Upload an image",
+        type=["jpg", "jpeg", "png"],
+    )
     if uploaded is None:
         return
 
     img = Image.open(uploaded).convert("RGB")
     st.image(img, caption="Input Image", use_column_width=True)
 
-    st.markdown("### Top-5 Predictions (ImageNet)")
+    st.subheader("Top-5 Predictions (ImageNet)")
+
     models = ["vgg16", "resnet50", "mobilenetv2", "efficientnetb0"]
     cols = st.columns(2)
 
-    for i, m in enumerate(models):
+    for i, model_name in enumerate(models):
         with cols[i % 2]:
-            st.subheader(m)
-            preds = predict_topk(img, m, k=5)
+            st.markdown(f"**{model_name}**")
+            preds = predict_topk(img, model_name, k=5)
             for label, score in preds:
                 st.write(f"{label} — {score:.3f}")
 
@@ -85,71 +76,79 @@ def classification_page():
 # OBJECT DETECTION (YOLOv8 ONNX)
 # -----------------------------------------------------------------------------
 def detection_page():
-    st.header("Object Detection – YOLOv8 (ONNX, CPU)")
+    st.header("Object Detection – YOLOv8 (ONNX)")
 
-    uploaded = st.file_uploader("Upload an image", ["jpg", "jpeg", "png"], key="det")
-    conf_thres = st.slider("Confidence threshold", 0.1, 0.9, 0.25, 0.05)
+    uploaded = st.file_uploader(
+        "Upload an image",
+        type=["jpg", "jpeg", "png"],
+        key="detector",
+    )
+
+    conf_thresh = st.slider(
+        "Confidence Threshold",
+        min_value=0.1,
+        max_value=0.9,
+        value=0.25,
+        step=0.05,
+    )
 
     if uploaded is None:
         return
 
     img = Image.open(uploaded).convert("RGB")
-    draw = ImageDraw.Draw(img)
 
-    detections = detect_image_pil(img, conf=conf_thres)
+    with st.spinner("Running YOLOv8 inference…"):
+        detections, vis_img = detect_image_pil(img, conf_thresh)
 
-    for d in detections:
-        cls_id = int(d.get("class", -1))
-        conf = d.get("confidence", d.get("conf", 0.0))
-        bbox = d.get("bbox", [])
-
-        if len(bbox) != 4 or cls_id < 0:
-            continue
-
-        label = COCO_CLASSES[cls_id] if cls_id < len(COCO_CLASSES) else "unknown"
-        x1, y1, x2, y2 = map(int, bbox)
-
-        # Draw box
-        draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
-
-        # Draw label
-        text = f"{label} {conf:.2f}"
-        draw.text((x1 + 4, y1 + 4), text, fill="red")
-
-    st.image(img, caption="Detection Output", use_column_width=True)
+    st.image(
+        vis_img,
+        caption="Detection Output",
+        use_column_width=True,
+    )
 
     st.subheader("Detection Results")
+
     if not detections:
         st.warning("No objects detected.")
-    else:
-        for d in detections:
-            cls_id = int(d.get("class", -1))
-            label = COCO_CLASSES[cls_id] if cls_id < len(COCO_CLASSES) else "unknown"
-            conf = d.get("confidence", d.get("conf", 0.0))
-            st.write(f"{label} — {conf:.2f}")
+        return
+
+    for d in detections:
+        label = d.get("class", "unknown")
+        conf = d.get("confidence", 0.0)
+        st.write(f"**{label}** — {conf:.2f}")
 
 # -----------------------------------------------------------------------------
 # MODEL COMPARISON
 # -----------------------------------------------------------------------------
 def model_comparison_page():
     st.header("Model Comparison")
-    st.markdown("""
-    **Classification:** VGG16, ResNet50, MobileNetV2, EfficientNetB0  
-    **Detection:** YOLOv8 (ONNX Runtime, CPU-only)
-    """)
+    st.markdown(
+        """
+        **Classification Models**
+        - VGG16
+        - ResNet50
+        - MobileNetV2
+        - EfficientNetB0
+
+        **Detection Model**
+        - YOLOv8 (ONNX Runtime, CPU)
+        """
+    )
 
 # -----------------------------------------------------------------------------
 # ABOUT
 # -----------------------------------------------------------------------------
 def about_page():
-    st.header("About")
-    st.markdown("""
-    SmartVision AI is designed for **real cloud deployment**, not demos.
+    st.header("About SmartVision AI")
+    st.markdown(
+        """
+        SmartVision AI is designed for **real-world deployment**, not demos.
 
-    - ONNX inference
-    - No OpenCV dependency
-    - Streamlit-Cloud safe
-    """)
+        - ONNX inference
+        - No OpenCV dependency
+        - Cloud-safe architecture
+        """
+    )
 
 # -----------------------------------------------------------------------------
 # MAIN
