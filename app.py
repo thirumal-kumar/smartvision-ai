@@ -1,73 +1,83 @@
-import os
 import streamlit as st
-import torch
 from PIL import Image
-from torchvision import models, transforms
 
+# ============================
+# Optional Torch (Classification)
+# ============================
+try:
+    import torch
+    from torchvision import models, transforms
+    TORCH_AVAILABLE = True
+except Exception:
+    TORCH_AVAILABLE = False
+
+# ============================
+# Detection (YOLOv8 ONNX)
+# ============================
 from detection.yolo_detect import detect_image_pil
 
-# ------------------------------------------------------------
-# Page config
-# ------------------------------------------------------------
+# ============================
+# Page Config
+# ============================
 st.set_page_config(
     page_title="SmartVision AI",
     layout="wide"
 )
 
-# ------------------------------------------------------------
-# ImageNet labels
-# ------------------------------------------------------------
-with open("imagenet_classes.txt") as f:
-    IMAGENET_CLASSES = [line.strip() for line in f]
+# ============================
+# ImageNet labels (local file)
+# ============================
+IMAGENET_CLASSES = []
+if TORCH_AVAILABLE:
+    with open("imagenet_classes.txt") as f:
+        IMAGENET_CLASSES = [line.strip() for line in f]
 
-# ------------------------------------------------------------
-# Classification models (lazy loaded)
-# ------------------------------------------------------------
-@st.cache_resource
-def load_classification_models():
-    return {
-        "VGG16": models.vgg16(
-            weights=models.VGG16_Weights.IMAGENET1K_V1
-        ).eval(),
-        "ResNet50": models.resnet50(
-            weights=models.ResNet50_Weights.IMAGENET1K_V2
-        ).eval(),
-        "MobileNetV2": models.mobilenet_v2(
-            weights=models.MobileNet_V2_Weights.IMAGENET1K_V1
-        ).eval(),
-        "EfficientNetB0": models.efficientnet_b0(
-            weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1
-        ).eval(),
-    }
+# ============================
+# Classification Setup (Local Only)
+# ============================
+if TORCH_AVAILABLE:
+    @st.cache_resource
+    def load_classification_models():
+        return {
+            "VGG16": models.vgg16(
+                weights=models.VGG16_Weights.IMAGENET1K_V1
+            ).eval(),
+            "ResNet50": models.resnet50(
+                weights=models.ResNet50_Weights.IMAGENET1K_V2
+            ).eval(),
+            "MobileNetV2": models.mobilenet_v2(
+                weights=models.MobileNet_V2_Weights.IMAGENET1K_V1
+            ).eval(),
+            "EfficientNetB0": models.efficientnet_b0(
+                weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1
+            ).eval(),
+        }
 
-CLASSIFICATION_MODELS = load_classification_models()
+    CLASSIFICATION_MODELS = load_classification_models()
 
-_transform = transforms.Compose([
-    transforms.Resize(256),
-    transforms.CenterCrop(224),
-    transforms.ToTensor(),
-])
+    _transform = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+    ])
 
-# ------------------------------------------------------------
-# 🔑 THIS FUNCTION WAS MISSING — RESTORED
-# ------------------------------------------------------------
-def classify_image(pil_image, model_name="ResNet50", topk=5):
-    model = CLASSIFICATION_MODELS[model_name]
-    img = _transform(pil_image).unsqueeze(0)
+    def classify_image(pil_image, model_name="ResNet50", topk=5):
+        model = CLASSIFICATION_MODELS[model_name]
+        img = _transform(pil_image).unsqueeze(0)
 
-    with torch.no_grad():
-        outputs = model(img)
-        probs = torch.nn.functional.softmax(outputs[0], dim=0)
+        with torch.no_grad():
+            outputs = model(img)
+            probs = torch.nn.functional.softmax(outputs[0], dim=0)
 
-    top_probs, top_idxs = probs.topk(topk)
-    return [
-        (IMAGENET_CLASSES[idx], float(prob))
-        for idx, prob in zip(top_idxs, top_probs)
-    ]
+        top_probs, top_idxs = probs.topk(topk)
+        return [
+            (IMAGENET_CLASSES[idx], float(prob))
+            for idx, prob in zip(top_idxs, top_probs)
+        ]
 
-# ------------------------------------------------------------
+# ============================
 # Pages
-# ------------------------------------------------------------
+# ============================
 def home_page():
     st.title("SmartVision AI")
     st.write("SmartVision AI is a deployment-grade computer vision system.")
@@ -80,6 +90,16 @@ def home_page():
 
 def classification_page():
     st.header("Image Classification")
+
+    if not TORCH_AVAILABLE:
+        st.warning(
+            "Image Classification requires PyTorch, which is not available "
+            "in the Streamlit Cloud runtime.\n\n"
+            "✔ This feature works locally\n"
+            "✔ Object Detection works fully in the cloud"
+        )
+        return
+
     uploaded = st.file_uploader(
         "Upload an image",
         type=["jpg", "jpeg", "png"]
@@ -90,7 +110,7 @@ def classification_page():
         st.image(img, caption="Input Image", use_container_width=True)
 
         model_name = st.selectbox(
-            "Select Model",
+            "Select Classification Model",
             list(CLASSIFICATION_MODELS.keys())
         )
 
@@ -103,6 +123,7 @@ def classification_page():
 
 def detection_page():
     st.header("Object Detection – YOLOv8 (ONNX)")
+
     uploaded = st.file_uploader(
         "Upload an image",
         type=["jpg", "jpeg", "png"]
@@ -141,14 +162,14 @@ def about_page():
     st.markdown("""
 SmartVision AI is designed for real-world deployment, not demos.
 
-- ONNX inference  
-- No OpenCV dependency  
+- ONNX inference
+- No OpenCV dependency
 - Cloud-safe architecture
 """)
 
-# ------------------------------------------------------------
-# Main navigation
-# ------------------------------------------------------------
+# ============================
+# Navigation
+# ============================
 def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.radio(
