@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw
 import streamlit as st
 
 # -----------------------------------------------------------------------------
-# COCO LABELS
+# COCO CLASSES (80)
 # -----------------------------------------------------------------------------
 COCO_CLASSES = [
     "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
@@ -44,10 +44,10 @@ def nms(boxes, scores, iou_thresh=0.45):
     idxs = scores.argsort()[::-1]
     keep = []
 
-    while len(idxs) > 0:
+    while idxs.size > 0:
         i = idxs[0]
         keep.append(i)
-        if len(idxs) == 1:
+        if idxs.size == 1:
             break
 
         xx1 = np.maximum(boxes[i, 0], boxes[idxs[1:], 0])
@@ -70,24 +70,22 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     session = load_session()
     orig_w, orig_h = img.size
 
-    preds = session.run(None, {"images": preprocess(img)})[0][0]
+    # Run inference
+    pred = session.run(None, {"images": preprocess(img)})[0]
+
+    # Handle output shape: (1, 84, 8400) → (8400, 84)
+    pred = np.squeeze(pred)
+    if pred.shape[0] < pred.shape[1]:
+        pred = pred.transpose(1, 0)
 
     boxes, scores, labels = [], [], []
 
-    for p in preds:
-        if p.shape[0] < 6:
-            continue
+    for p in pred:
+        box = p[:4]
+        class_scores = p[4:]
 
-        # Detect layout
-        if p.shape[0] == 85:
-            obj_conf = p[4]
-            class_scores = p[5:]
-            score = obj_conf * class_scores.max()
-            cls_id = int(np.argmax(class_scores))
-        else:
-            class_scores = p[4:]
-            score = class_scores.max()
-            cls_id = int(np.argmax(class_scores))
+        cls_id = int(np.argmax(class_scores))
+        score = float(class_scores[cls_id])
 
         if score < conf_thresh:
             continue
@@ -98,14 +96,14 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
             else "unknown"
         )
 
-        x, y, w, h = p[:4]
+        x, y, w, h = box
         x1 = (x - w / 2) * orig_w / IMG_SIZE
         y1 = (y - h / 2) * orig_h / IMG_SIZE
         x2 = (x + w / 2) * orig_w / IMG_SIZE
         y2 = (y + h / 2) * orig_h / IMG_SIZE
 
         boxes.append([x1, y1, x2, y2])
-        scores.append(float(score))
+        scores.append(score)
         labels.append(label)
 
     if not boxes:
@@ -113,7 +111,6 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
 
     boxes = np.array(boxes, dtype=np.float32)
     scores = np.array(scores, dtype=np.float32)
-
     keep = nms(boxes, scores)
 
     draw = ImageDraw.Draw(img)
