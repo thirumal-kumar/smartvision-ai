@@ -1,26 +1,19 @@
 import os
-import sys
 import streamlit as st
 from PIL import Image
 
 # ------------------------------------------------------------
-# Ensure project root is in PYTHONPATH (Streamlit Cloud safe)
-# ------------------------------------------------------------
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
-
-# ------------------------------------------------------------
-# Import ONLY cloud-safe modules
+# Safe import for ONNX detection (no torch, no cv2)
 # ------------------------------------------------------------
 from detection.yolo_detect import detect_image_pil
 
 # ------------------------------------------------------------
-# Page config
+# Streamlit Config
 # ------------------------------------------------------------
 st.set_page_config(
     page_title="SmartVision AI",
     layout="wide",
+    page_icon="🧠"
 )
 
 # ------------------------------------------------------------
@@ -29,13 +22,7 @@ st.set_page_config(
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to",
-    [
-        "Home",
-        "Image Classification",
-        "Object Detection",
-        "Model Comparison",
-        "About",
-    ],
+    ["Home", "Image Classification", "Object Detection", "Model Comparison", "About"]
 )
 
 # ------------------------------------------------------------
@@ -44,96 +31,93 @@ page = st.sidebar.radio(
 def home_page():
     st.title("SmartVision AI")
 
-    st.markdown(
-        """
+    st.markdown("""
 **SmartVision AI** is a deployment-grade computer vision system.
 
 ### Features
 - Image Classification (ImageNet CNNs)
 - Object Detection (YOLOv8 – ONNX Runtime)
 - CPU-only, Streamlit-Cloud safe
-        """
-    )
+    """)
 
 # ------------------------------------------------------------
-# Image Classification Page (UI ONLY – no execution)
+# Image Classification (UI ONLY – Cloud Safe)
 # ------------------------------------------------------------
 def classification_page():
     st.title("Image Classification")
 
-    st.warning(
-        """
-Image Classification requires **PyTorch**, which is **not available**
-in the Streamlit Cloud runtime.
-
-✔ This feature works **locally**  
-✔ Object Detection works **fully in the cloud**
-        """
+    st.info(
+        "Image Classification requires **PyTorch**, which is **not available on Streamlit Cloud**.\n\n"
+        "✔ This feature works **locally**\n"
+        "✔ Object Detection works fully **in the cloud**"
     )
 
-    st.markdown(
-        """
-Upload an image
-
-- Drag and drop file here
-- Limit 200MB per file
+    st.markdown("""
+### Upload an image
+- Drag and drop file here  
+- Limit **200MB** per file  
 - JPG, JPEG, PNG
-        """
-    )
+    """)
 
 # ------------------------------------------------------------
-# Object Detection Page (YOLOv8 ONNX)
+# Object Detection (YOLOv8 ONNX – WORKING)
 # ------------------------------------------------------------
 def detection_page():
     st.title("Object Detection – YOLOv8 (ONNX)")
 
     uploaded_file = st.file_uploader(
         "Upload an image",
-        type=["jpg", "jpeg", "png"],
+        type=["jpg", "jpeg", "png"]
     )
 
     conf_thresh = st.slider(
         "Confidence Threshold",
         min_value=0.1,
-        max_value=0.9,
+        max_value=1.0,
         value=0.25,
-        step=0.05,
+        step=0.05
     )
 
     if uploaded_file:
         img = Image.open(uploaded_file).convert("RGB")
-        st.image(img, caption="Input Image", use_container_width=True)
+
+        st.image(img, caption="Input Image", width=700)
 
         with st.spinner("Running object detection..."):
             detections, vis_img = detect_image_pil(img, conf_thresh)
 
-        st.image(vis_img, caption="Detection Output", use_container_width=True)
+        st.image(vis_img, caption="Detection Output", width=700)
 
         st.subheader("Detection Results")
+
         if not detections:
             st.write("No objects detected.")
         else:
             for d in detections:
-                st.write(f"{d['label']} — {d['confidence']:.2f}")
+                # ✅ CORRECT KEYS — NO MORE KeyError
+                label = d.get("class_name", "unknown")
+                conf = d.get("confidence", 0.0)
+
+                st.write(f"**{label}** — {conf:.2f}")
 
 # ------------------------------------------------------------
-# Model Comparison Page
+# Model Comparison (STATIC – HONEST)
 # ------------------------------------------------------------
 def comparison_page():
     st.title("Model Comparison")
 
-    st.markdown(
-        """
-### Classification Models
-- VGG16
-- ResNet50
-- MobileNetV2
-- EfficientNetB0
+    st.subheader("Classification Models")
+    st.markdown("""
+- VGG16  
+- ResNet50  
+- MobileNetV2  
+- EfficientNetB0  
+    """)
 
-### Detection Model
+    st.subheader("Detection Model")
+    st.markdown("""
 - YOLOv8 (ONNX Runtime, CPU)
-        """
-    )
+    """)
 
 # ------------------------------------------------------------
 # About Page
@@ -141,19 +125,17 @@ def comparison_page():
 def about_page():
     st.title("About SmartVision AI")
 
-    st.markdown(
-        """
+    st.markdown("""
 SmartVision AI is designed for **real-world deployment**, not demos.
 
 ### Architecture Highlights
 - ONNX inference
 - No OpenCV dependency
 - Cloud-safe architecture
-        """
-    )
+    """)
 
 # ------------------------------------------------------------
-# Main Router
+# Router
 # ------------------------------------------------------------
 def main():
     if page == "Home":
@@ -167,6 +149,5 @@ def main():
     elif page == "About":
         about_page()
 
-# ------------------------------------------------------------
 if __name__ == "__main__":
     main()
