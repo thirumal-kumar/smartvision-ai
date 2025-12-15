@@ -1,18 +1,31 @@
 # app.py
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from classification.models_loader import predict_topk
 from detection.yolo_detect import detect_image_pil
 
 # -----------------------------------------------------------------------------
+# COCO LABELS (YOLOv8)
+# -----------------------------------------------------------------------------
+COCO_CLASSES = [
+    "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
+    "traffic light","fire hydrant","stop sign","parking meter","bench","bird","cat",
+    "dog","horse","sheep","cow","elephant","bear","zebra","giraffe","backpack",
+    "umbrella","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball",
+    "kite","baseball bat","baseball glove","skateboard","surfboard","tennis racket",
+    "bottle","wine glass","cup","fork","knife","spoon","bowl","banana","apple",
+    "sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake","chair",
+    "couch","potted plant","bed","dining table","toilet","tv","laptop","mouse",
+    "remote","keyboard","cell phone","microwave","oven","toaster","sink",
+    "refrigerator","book","clock","vase","scissors","teddy bear","hair drier",
+    "toothbrush"
+]
+
+# -----------------------------------------------------------------------------
 # PAGE CONFIG
 # -----------------------------------------------------------------------------
-st.set_page_config(
-    page_title="SmartVision AI",
-    layout="wide"
-)
-
+st.set_page_config(page_title="SmartVision AI", layout="wide")
 APP_TITLE = "SmartVision AI – Intelligent Vision System"
 
 # -----------------------------------------------------------------------------
@@ -37,11 +50,11 @@ def sidebar():
 def home_page():
     st.title(APP_TITLE)
     st.markdown("""
-    **SmartVision AI** is a cloud-safe computer vision application demonstrating:
+    **SmartVision AI** demonstrates deployment-grade vision pipelines.
 
-    - 🧠 Image classification using pretrained CNNs  
-    - 🎯 Object detection using **YOLOv8 (ONNX Runtime, CPU-only)**  
-    - ☁️ Deployment-ready architecture (no OpenCV / no Torch at runtime)  
+    - Image Classification (CNNs)
+    - Object Detection (YOLOv8 – ONNX Runtime)
+    - CPU-only, cloud-safe deployment
     """)
 
 # -----------------------------------------------------------------------------
@@ -50,39 +63,23 @@ def home_page():
 def classification_page():
     st.header("Image Classification")
 
-    uploaded = st.file_uploader(
-        "Upload an image",
-        type=["jpg", "jpeg", "png"]
-    )
-
+    uploaded = st.file_uploader("Upload an image", ["jpg", "jpeg", "png"])
     if uploaded is None:
-        st.info("Upload an image to run classification.")
         return
 
     img = Image.open(uploaded).convert("RGB")
     st.image(img, caption="Input Image", use_column_width=True)
 
     st.markdown("### Top-5 Predictions (ImageNet)")
-
-    model_names = [
-        "vgg16",
-        "resnet50",
-        "mobilenetv2",
-        "efficientnetb0"
-    ]
-
+    models = ["vgg16", "resnet50", "mobilenetv2", "efficientnetb0"]
     cols = st.columns(2)
 
-    for i, model_name in enumerate(model_names):
+    for i, m in enumerate(models):
         with cols[i % 2]:
-            st.subheader(model_name)
-            with st.spinner(f"Running {model_name}…"):
-                try:
-                    preds = predict_topk(img, model_name, k=5)
-                    for label, score in preds:
-                        st.write(f"{label} — {score:.3f}")
-                except Exception as e:
-                    st.error(str(e))
+            st.subheader(m)
+            preds = predict_topk(img, m, k=5)
+            for label, score in preds:
+                st.write(f"{label} — {score:.3f}")
 
 # -----------------------------------------------------------------------------
 # OBJECT DETECTION (YOLOv8 ONNX)
@@ -90,81 +87,68 @@ def classification_page():
 def detection_page():
     st.header("Object Detection – YOLOv8 (ONNX, CPU)")
 
-    uploaded = st.file_uploader(
-        "Upload an image",
-        type=["jpg", "jpeg", "png"],
-        key="det"
-    )
-
-    conf_thres = st.slider(
-        "Confidence threshold",
-        min_value=0.10,
-        max_value=0.90,
-        value=0.25,
-        step=0.05
-    )
+    uploaded = st.file_uploader("Upload an image", ["jpg", "jpeg", "png"], key="det")
+    conf_thres = st.slider("Confidence threshold", 0.1, 0.9, 0.25, 0.05)
 
     if uploaded is None:
-        st.info("Upload an image to run object detection.")
         return
 
     img = Image.open(uploaded).convert("RGB")
-    st.image(img, caption="Input Image", width=450)
+    draw = ImageDraw.Draw(img)
 
-    with st.spinner("Running YOLOv8 ONNX inference…"):
-        detections = detect_image_pil(img, conf=conf_thres)
+    detections = detect_image_pil(img, conf=conf_thres)
+
+    for d in detections:
+        cls_id = int(d.get("class", -1))
+        conf = d.get("confidence", d.get("conf", 0.0))
+        bbox = d.get("bbox", [])
+
+        if len(bbox) != 4 or cls_id < 0:
+            continue
+
+        label = COCO_CLASSES[cls_id] if cls_id < len(COCO_CLASSES) else "unknown"
+        x1, y1, x2, y2 = map(int, bbox)
+
+        # Draw box
+        draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
+
+        # Draw label
+        text = f"{label} {conf:.2f}"
+        draw.text((x1 + 4, y1 + 4), text, fill="red")
+
+    st.image(img, caption="Detection Output", use_column_width=True)
 
     st.subheader("Detection Results")
-
     if not detections:
-        st.warning("No objects detected above the confidence threshold.")
+        st.warning("No objects detected.")
     else:
         for d in detections:
-            # 🔑 SAFE FIELD NORMALIZATION
-            label = d.get("class", "unknown")
-            confidence = d.get("confidence", d.get("conf", 0.0))
-            bbox = d.get("bbox", [])
-
-            st.write(
-                f"{label} | "
-                f"Confidence: {confidence:.2f} | "
-                f"Bounding Box: {bbox}"
-            )
+            cls_id = int(d.get("class", -1))
+            label = COCO_CLASSES[cls_id] if cls_id < len(COCO_CLASSES) else "unknown"
+            conf = d.get("confidence", d.get("conf", 0.0))
+            st.write(f"{label} — {conf:.2f}")
 
 # -----------------------------------------------------------------------------
 # MODEL COMPARISON
 # -----------------------------------------------------------------------------
 def model_comparison_page():
     st.header("Model Comparison")
-
     st.markdown("""
-    ### Classification Models
-    - **VGG16** – deep and accurate, higher compute cost  
-    - **ResNet50** – balanced performance and robustness  
-    - **MobileNetV2** – lightweight and fast  
-    - **EfficientNetB0** – optimal scaling strategy  
-
-    ### Object Detection
-    - **YOLOv8 (ONNX Runtime)**  
-      - CPU-only inference  
-      - No native GUI dependencies  
-      - Cloud-safe deployment  
+    **Classification:** VGG16, ResNet50, MobileNetV2, EfficientNetB0  
+    **Detection:** YOLOv8 (ONNX Runtime, CPU-only)
     """)
 
 # -----------------------------------------------------------------------------
 # ABOUT
 # -----------------------------------------------------------------------------
 def about_page():
-    st.header("About SmartVision AI")
-
+    st.header("About")
     st.markdown("""
-    SmartVision AI demonstrates **deployment-grade computer vision pipelines**.
+    SmartVision AI is designed for **real cloud deployment**, not demos.
 
-    **Key design decisions:**
-    - ONNX Runtime for object detection stability
-    - Modular architecture
-    - Streamlit Cloud compatibility
-    - Separation of inference and UI layers
+    - ONNX inference
+    - No OpenCV dependency
+    - Streamlit-Cloud safe
     """)
 
 # -----------------------------------------------------------------------------
