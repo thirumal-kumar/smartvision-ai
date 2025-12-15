@@ -1,11 +1,7 @@
 streamlit==1.27.0
 
-# Core ML
-torch==2.2.0+cpu
-torchvision==0.17.0+cpu
-
-# YOLO
-ultralytics==8.0.134
+# YOLO (this will auto-pull a compatible torch)
+ultralytics
 
 # Image processing
 opencv-python-headless
