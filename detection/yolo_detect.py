@@ -1,28 +1,23 @@
 # detection/yolo_detect.py
-
 import numpy as np
 import streamlit as st
-from ultralytics import YOLO
 
 @st.cache_resource(show_spinner=False)
 def get_model():
     """
-    Load YOLOv8 model once per Streamlit session.
+    Lazy-load YOLO only AFTER Streamlit runtime starts.
+    This avoids ultralytics -> cv2 import crash.
     """
-    return YOLO("yolov8n.pt")  # auto-download if not present
+    from ultralytics import YOLO  # 🔑 MUST BE INSIDE FUNCTION
+    return YOLO("yolov8n.pt")
 
 
 def detect_image_pil(img_pil, model=None, conf=0.25, iou=0.45):
     """
-    img_pil: PIL.Image
-    model: cached YOLO model
-    returns:
-        img_bgr (numpy array)
-        detections (list of dicts)
+    Run YOLOv8 detection on a PIL image.
+    Returns BGR image + detection metadata.
     """
-
-    # 🔑 Lazy import (critical for Streamlit Cloud)
-    import cv2
+    import cv2  # 🔑 lazy OpenCV import
 
     if model is None:
         model = get_model()
@@ -47,7 +42,6 @@ def detect_image_pil(img_pil, model=None, conf=0.25, iou=0.45):
                 "class": cls_name
             })
 
-            # draw box
             label = f"{cls_name} {score:.2f}"
             cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
