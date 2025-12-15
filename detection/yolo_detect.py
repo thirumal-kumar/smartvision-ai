@@ -3,9 +3,9 @@ import onnxruntime as ort
 from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
 
-# -----------------------------------------------------------------------------
-# COCO CLASSES
-# -----------------------------------------------------------------------------
+# =============================================================================
+# COCO CLASS NAMES (YOLOv8 OFFICIAL ORDER)
+# =============================================================================
 COCO_CLASSES = [
     "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
     "traffic light","fire hydrant","stop sign","parking meter","bench","bird","cat",
@@ -13,9 +13,9 @@ COCO_CLASSES = [
     "umbrella","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball",
     "kite","baseball bat","baseball glove","skateboard","surfboard","tennis racket",
     "bottle","wine glass","cup","fork","knife","spoon","bowl","banana","apple",
-    "sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake","chair",
-    "couch","potted plant","bed","dining table","toilet","tv","laptop","mouse",
-    "remote","keyboard","cell phone","microwave","oven","toaster","sink",
+    "sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake",
+    "chair","couch","potted plant","bed","dining table","toilet","tv","laptop",
+    "mouse","remote","keyboard","cell phone","microwave","oven","toaster","sink",
     "refrigerator","book","clock","vase","scissors","teddy bear","hair drier",
     "toothbrush"
 ]
@@ -23,7 +23,9 @@ COCO_CLASSES = [
 MODEL_PATH = "yolov8n.onnx"
 IMG_SIZE = 640
 
-# -----------------------------------------------------------------------------
+# =============================================================================
+# ONNX SESSION (CLOUD SAFE)
+# =============================================================================
 @st.cache_resource(show_spinner=False)
 def load_session():
     return ort.InferenceSession(
@@ -31,15 +33,19 @@ def load_session():
         providers=["CPUExecutionProvider"]
     )
 
-# -----------------------------------------------------------------------------
+# =============================================================================
+# PREPROCESS
+# =============================================================================
 def preprocess(img: Image.Image):
     img = img.resize((IMG_SIZE, IMG_SIZE))
     arr = np.asarray(img, dtype=np.float32) / 255.0
-    arr = np.transpose(arr, (2, 0, 1))
+    arr = np.transpose(arr, (2, 0, 1))  # HWC → CHW
     arr = np.expand_dims(arr, axis=0)
     return arr
 
-# -----------------------------------------------------------------------------
+# =============================================================================
+# NON-MAX SUPPRESSION
+# =============================================================================
 def nms(boxes, scores, iou_thresh=0.45):
     idxs = scores.argsort()[::-1]
     keep = []
@@ -65,21 +71,23 @@ def nms(boxes, scores, iou_thresh=0.45):
 
     return keep
 
-# -----------------------------------------------------------------------------
+# =============================================================================
+# MAIN DETECTION FUNCTION
+# =============================================================================
 def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     session = load_session()
     orig_w, orig_h = img.size
 
-    pred = session.run(None, {"images": preprocess(img)})[0]
-    pred = np.squeeze(pred)
+    preds = session.run(None, {"images": preprocess(img)})[0]
+    preds = np.squeeze(preds)
 
-    # YOLOv8 ONNX layout fix
-    if pred.shape[0] < pred.shape[1]:
-        pred = pred.transpose(1, 0)
+    # YOLOv8 ONNX output layout fix
+    if preds.shape[0] < preds.shape[1]:
+        preds = preds.transpose(1, 0)
 
     boxes, scores, labels = [], [], []
 
-    for p in pred:
+    for p in preds:
         box = p[:4]
         class_scores = p[4:]
 
@@ -92,7 +100,7 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
         label = (
             COCO_CLASSES[cls_id]
             if 0 <= cls_id < len(COCO_CLASSES)
-            else "unknown"
+            else f"class_{cls_id}"
         )
 
         x, y, w, h = box
@@ -116,7 +124,7 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
 
     try:
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
-    except:
+    except Exception:
         font = ImageFont.load_default()
 
     results = []
@@ -128,7 +136,7 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
 
         text = f"{label} {score:.2f}"
 
-        # ✅ Pillow-10-safe text size
+        # Pillow ≥10 safe
         bbox = draw.textbbox((0, 0), text, font=font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
