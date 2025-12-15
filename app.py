@@ -1,97 +1,210 @@
 # app.py
 import streamlit as st
 from PIL import Image
+import os
 
 from classification.models_loader import predict_topk
-from utils.viz import np_bgr_to_bytes
+from detection.yolo_detect import detect_image_pil
 
-st.set_page_config(page_title="SmartVision AI", layout="wide")
+# -----------------------------------------------------------------------------
+# PAGE CONFIG
+# -----------------------------------------------------------------------------
+st.set_page_config(
+    page_title="SmartVision AI",
+    layout="wide"
+)
 
-APP_TITLE = "SmartVision AI – Intelligent Multi-Class Object Recognition System"
+APP_TITLE = "SmartVision AI – Intelligent Vision System"
 
+# -----------------------------------------------------------------------------
+# SIDEBAR
+# -----------------------------------------------------------------------------
 def sidebar():
     st.sidebar.title("Navigation")
     return st.sidebar.radio(
         "Go to",
-        ["Home", "Classification", "Object Detection", "About"]
+        [
+            "Home",
+            "Image Classification",
+            "Object Detection (YOLOv8 ONNX)",
+            "Model Comparison",
+            "About"
+        ]
     )
 
+# -----------------------------------------------------------------------------
+# HOME
+# -----------------------------------------------------------------------------
 def home_page():
     st.title(APP_TITLE)
+
     st.markdown("""
-    **SmartVision AI** integrates image classification and object detection  
-    in a modular, deployment-safe Streamlit architecture.
+    **SmartVision AI** is a modular computer vision platform that demonstrates:
+
+    - 🔍 **Image Classification** using pretrained CNN architectures  
+    - 🎯 **Object Detection** using **YOLOv8 (ONNX, CPU-only)**  
+    - ☁️ **Cloud-safe deployment** (no native GUI dependencies)  
+    - 🧩 Clean, extensible architecture suitable for research and demos  
+
+    This deployment uses **ONNX Runtime** for object detection to ensure
+    maximum compatibility with cloud environments such as **Streamlit Cloud**.
     """)
 
+# -----------------------------------------------------------------------------
+# IMAGE CLASSIFICATION
+# -----------------------------------------------------------------------------
 def classification_page():
     st.header("Image Classification")
 
-    uploaded = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
-    if not uploaded:
-        st.info("Upload an image to begin.")
+    uploaded = st.file_uploader(
+        "Upload an image",
+        type=["jpg", "jpeg", "png"]
+    )
+
+    if uploaded is None:
+        st.info("Upload an image to run classification.")
         return
 
     img = Image.open(uploaded).convert("RGB")
-    st.image(img, use_column_width=True)
+    st.image(img, caption="Input Image", use_column_width=True)
 
-    models = ["vgg16", "resnet50", "mobilenetv2", "efficientnetb0"]
+    st.markdown("### Top-5 Predictions (ImageNet)")
+
+    model_names = [
+        "vgg16",
+        "resnet50",
+        "mobilenetv2",
+        "efficientnetb0"
+    ]
+
     cols = st.columns(2)
 
-    for i, name in enumerate(models):
+    for i, model_name in enumerate(model_names):
         with cols[i % 2]:
-            st.subheader(name)
-            with st.spinner(f"Running {name}…"):
-                preds = predict_topk(img, name, k=5)
-                for label, score in preds:
-                    st.write(f"{label} — {score:.3f}")
+            st.subheader(model_name)
+            with st.spinner(f"Running {model_name}…"):
+                try:
+                    preds = predict_topk(img, model_name, k=5)
+                    for label, score in preds:
+                        st.write(f"{label} — {score:.3f}")
+                except Exception as e:
+                    st.error(str(e))
 
+# -----------------------------------------------------------------------------
+# OBJECT DETECTION (ONNX)
+# -----------------------------------------------------------------------------
 def detection_page():
-    st.header("Object Detection – YOLOv8")
+    st.header("Object Detection – YOLOv8 (ONNX, CPU)")
 
-    uploaded = st.file_uploader("Upload image", type=["jpg", "jpeg", "png"])
-    if not uploaded:
-        st.info("Upload an image to run detection.")
+    uploaded = st.file_uploader(
+        "Upload an image",
+        type=["jpg", "jpeg", "png"],
+        key="det"
+    )
+
+    conf = st.slider(
+        "Confidence threshold",
+        min_value=0.10,
+        max_value=0.90,
+        value=0.25,
+        step=0.05
+    )
+
+    if uploaded is None:
+        st.info("Upload an image to run object detection.")
         return
 
     img = Image.open(uploaded).convert("RGB")
-    st.image(img, width=450)
+    st.image(img, caption="Input Image", width=450)
 
-    # 🔑 Import detection logic ONLY here
-    from detection.yolo_detect import get_model, detect_image_pil
+    with st.spinner("Running YOLOv8 ONNX inference…"):
+        detections = detect_image_pil(img, conf=conf)
 
-    conf = st.sidebar.slider("Confidence", 0.1, 0.9, 0.25)
-    iou = st.sidebar.slider("IoU", 0.1, 0.7, 0.45)
-
-    with st.spinner("Loading YOLO model…"):
-        model = get_model()
-
-    with st.spinner("Running detection…"):
-        img_bgr, detections = detect_image_pil(
-            img, model=model, conf=conf, iou=iou
-        )
-
-    st.image(np_bgr_to_bytes(img_bgr))
+    st.subheader("Detection Results")
 
     if not detections:
-        st.warning("No objects detected.")
+        st.warning("No objects detected above the confidence threshold.")
     else:
-        for d in detections:
-            st.write(f"{d['class']} — {d['conf']:.2f} — {d['xyxy']}")
+        for det in detections:
+            st.write(
+                f"Class ID: {det['class']} | "
+                f"Confidence: {det['conf']:.2f} | "
+                f"Bounding Box: {det['xyxy']}"
+            )
 
+# -----------------------------------------------------------------------------
+# MODEL COMPARISON
+# -----------------------------------------------------------------------------
+def model_comparison_page():
+    st.header("Model Comparison")
+
+    st.markdown("""
+    ### Classification Models
+
+    **VGG16**
+    - Deep, classical CNN  
+    - High accuracy, high compute cost  
+
+    **ResNet50**
+    - Residual connections  
+    - Excellent generalization  
+
+    **MobileNetV2**
+    - Lightweight and fast  
+    - Suitable for edge devices  
+
+    **EfficientNetB0**
+    - Compound scaling strategy  
+    - Strong accuracy-to-size ratio  
+
+    ### Object Detection
+
+    **YOLOv8 (ONNX Runtime)**
+    - Real-time object detection  
+    - CPU-only inference  
+    - Cloud-safe deployment  
+    """)
+
+# -----------------------------------------------------------------------------
+# ABOUT
+# -----------------------------------------------------------------------------
 def about_page():
-    st.header("About")
-    st.markdown("SmartVision AI — deployment-safe computer vision demo.")
+    st.header("About SmartVision AI")
 
+    st.markdown("""
+    SmartVision AI is designed as a **deployment-ready demonstration**
+    of modern computer vision pipelines.
+
+    ### Key Design Choices
+    - ONNX Runtime for object detection (no GPU, no OpenCV)  
+    - Modular architecture  
+    - Streamlit Cloud compatibility  
+    - Suitable for research demos, teaching, and prototyping  
+
+    ### Future Extensions
+    - Bounding-box visualization using PIL  
+    - Video inference  
+    - Custom-trained ONNX models  
+    - Analytics dashboards  
+    """)
+
+# -----------------------------------------------------------------------------
+# MAIN
+# -----------------------------------------------------------------------------
 def main():
     page = sidebar()
+
     if page == "Home":
         home_page()
-    elif page == "Classification":
+    elif page == "Image Classification":
         classification_page()
-    elif page == "Object Detection":
+    elif page == "Object Detection (YOLOv8 ONNX)":
         detection_page()
+    elif page == "Model Comparison":
+        model_comparison_page()
     elif page == "About":
         about_page()
+
 
 if __name__ == "__main__":
     main()

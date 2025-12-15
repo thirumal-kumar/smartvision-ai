@@ -1,59 +1,40 @@
 # detection/yolo_detect.py
 import numpy as np
+import onnxruntime as ort
 import streamlit as st
+from PIL import Image
+
+MODEL_PATH = "detection/yolov8n.onnx"
+IMG_SIZE = 640
 
 @st.cache_resource(show_spinner=False)
-def get_model():
-    """
-    Lazy-load YOLO only AFTER Streamlit runtime starts.
-    This avoids ultralytics -> cv2 import crash.
-    """
-    from ultralytics import YOLO  # 🔑 MUST BE INSIDE FUNCTION
-    return YOLO("yolov8n.pt")
+def load_session():
+    return ort.InferenceSession(
+        MODEL_PATH,
+        providers=["CPUExecutionProvider"]
+    )
 
+def preprocess(img_pil: Image.Image):
+    img = img_pil.resize((IMG_SIZE, IMG_SIZE))
+    img = np.array(img).astype(np.float32) / 255.0
+    img = np.transpose(img, (2, 0, 1))   # HWC → CHW
+    img = np.expand_dims(img, axis=0)    # add batch
+    return img
 
-def detect_image_pil(img_pil, model=None, conf=0.25, iou=0.45):
-    """
-    Run YOLOv8 detection on a PIL image.
-    Returns BGR image + detection metadata.
-    """
-    import cv2  # 🔑 lazy OpenCV import
+def detect_image_pil(img_pil, conf=0.25):
+    session = load_session()
+    inp = preprocess(img_pil)
 
-    if model is None:
-        model = get_model()
-
-    img = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-
-    results = model(img, conf=conf, iou=iou, verbose=False)
-    r = results[0]
+    outputs = session.run(None, {"images": inp})[0]
 
     detections = []
-
-    if r.boxes is not None:
-        for box in r.boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-            score = float(box.conf[0])
-            cls_id = int(box.cls[0])
-            cls_name = model.names.get(cls_id, str(cls_id))
-
+    for det in outputs[0]:
+        score = det[4]
+        if score >= conf:
             detections.append({
-                "xyxy": (x1, y1, x2, y2),
-                "conf": score,
-                "class": cls_name
+                "xyxy": det[:4].tolist(),
+                "conf": float(score),
+                "class": int(det[5])
             })
 
-            label = f"{cls_name} {score:.2f}"
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-            (tw, th), _ = cv2.getTextSize(
-                label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1
-            )
-            cv2.rectangle(
-                img, (x1, y1 - th - 6), (x1 + tw, y1), (0, 255, 0), -1
-            )
-            cv2.putText(
-                img, label, (x1, y1 - 4),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1
-            )
-
-    return img, detections
+    return detections
