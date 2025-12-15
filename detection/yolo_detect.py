@@ -1,10 +1,10 @@
 import numpy as np
 import onnxruntime as ort
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import streamlit as st
 
 # -----------------------------------------------------------------------------
-# COCO CLASSES (80)
+# COCO CLASSES
 # -----------------------------------------------------------------------------
 COCO_CLASSES = [
     "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
@@ -70,11 +70,10 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     session = load_session()
     orig_w, orig_h = img.size
 
-    # Run inference
     pred = session.run(None, {"images": preprocess(img)})[0]
-
-    # Handle output shape: (1, 84, 8400) → (8400, 84)
     pred = np.squeeze(pred)
+
+    # YOLOv8 ONNX output fix
     if pred.shape[0] < pred.shape[1]:
         pred = pred.transpose(1, 0)
 
@@ -114,6 +113,12 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     keep = nms(boxes, scores)
 
     draw = ImageDraw.Draw(img)
+
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", 14)
+    except:
+        font = ImageFont.load_default()
+
     results = []
 
     for i in keep:
@@ -121,8 +126,29 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
         label = labels[i]
         score = scores[i]
 
+        text = f"{label} {score:.2f}"
+        text_w, text_h = draw.textsize(text, font=font)
+
+        # Clamp label position
+        text_x = max(0, x1)
+        text_y = max(0, y1 - text_h - 6)
+
+        # Draw bounding box
         draw.rectangle([x1, y1, x2, y2], outline="lime", width=3)
-        draw.text((x1 + 4, y1 + 4), f"{label} {score:.2f}", fill="lime")
+
+        # Draw label background
+        draw.rectangle(
+            [text_x, text_y, text_x + text_w + 6, text_y + text_h + 4],
+            fill="lime"
+        )
+
+        # Draw label text
+        draw.text(
+            (text_x + 3, text_y + 2),
+            text,
+            fill="black",
+            font=font
+        )
 
         results.append({
             "class": label,
