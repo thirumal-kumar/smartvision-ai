@@ -73,7 +73,7 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     pred = session.run(None, {"images": preprocess(img)})[0]
     pred = np.squeeze(pred)
 
-    # YOLOv8 ONNX output fix
+    # YOLOv8 ONNX layout fix
     if pred.shape[0] < pred.shape[1]:
         pred = pred.transpose(1, 0)
 
@@ -127,22 +127,20 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
         score = scores[i]
 
         text = f"{label} {score:.2f}"
-        text_w, text_h = draw.textsize(text, font=font)
 
-        # Clamp label position
+        # ✅ Pillow-10-safe text size
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+
         text_x = max(0, x1)
         text_y = max(0, y1 - text_h - 6)
 
-        # Draw bounding box
         draw.rectangle([x1, y1, x2, y2], outline="lime", width=3)
-
-        # Draw label background
         draw.rectangle(
             [text_x, text_y, text_x + text_w + 6, text_y + text_h + 4],
             fill="lime"
         )
-
-        # Draw label text
         draw.text(
             (text_x + 3, text_y + 2),
             text,
