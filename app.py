@@ -1,19 +1,22 @@
+import os
+import sys
 import streamlit as st
 from PIL import Image
 
 # ============================================================
-# SAFE IMPORTS (Cloud + Local compatible)
+# 🔧 FIX PYTHON PATH (CRITICAL FOR STREAMLIT CLOUD)
 # ============================================================
 
-try:
-    # Preferred import (if folder is named 'classification')
-    from classification.classifier import classify_image
-except ModuleNotFoundError:
-    # Fallback import (if folder is named 'classifiers')
-    from classifiers.classifier import classify_image
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
+# ============================================================
+# IMPORTS (NOW SAFE)
+# ============================================================
+
+from classifiers.classifier import classify_image
 from detection.yolo_detect import detect_image_pil
-
 
 # ============================================================
 # PAGE CONFIG
@@ -65,8 +68,7 @@ def home_page():
     )
 
     st.info(
-        "This project focuses on **robust inference pipelines**, "
-        "cloud compatibility, and real-world deployment."
+        "Designed for **real-world inference**, not demos."
     )
 
 # ============================================================
