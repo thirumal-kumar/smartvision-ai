@@ -2,7 +2,7 @@ import streamlit as st
 from PIL import Image
 
 # ============================================================
-# CORRECT IMPORTS (MATCH PROJECT STRUCTURE)
+# CORRECT PACKAGE IMPORTS
 # ============================================================
 
 from classification.classifier import classify_image
@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ============================================================
-# SIDEBAR NAVIGATION
+# SIDEBAR
 # ============================================================
 
 st.sidebar.title("Navigation")
@@ -57,9 +57,7 @@ def home_page():
         """
     )
 
-    st.info(
-        "Designed for **real-world inference**, not demos."
-    )
+    st.info("Designed for real-world inference, not demos.")
 
 # ============================================================
 # IMAGE CLASSIFICATION
@@ -68,14 +66,9 @@ def home_page():
 def classification_page():
     st.title("Image Classification")
 
-    st.markdown(
-        "Upload an image to classify it using ImageNet-trained models."
-    )
+    st.markdown("Upload an image to classify it using ImageNet-trained models.")
 
-    uploaded_file = st.file_uploader(
-        "",
-        type=["jpg", "jpeg", "png"]
-    )
+    uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"])
 
     if uploaded_file:
         img = Image.open(uploaded_file).convert("RGB")
@@ -87,9 +80,9 @@ def classification_page():
         st.subheader("Top-5 Predictions (ImageNet)")
 
         cols = st.columns(len(results))
-        for col, (model_name, preds) in zip(cols, results.items()):
+        for col, (model, preds) in zip(cols, results.items()):
             with col:
-                st.markdown(f"**{model_name}**")
+                st.markdown(f"**{model}**")
                 for label, score in preds:
                     st.write(f"{label} — {score:.3f}")
 
@@ -100,44 +93,27 @@ def classification_page():
 def detection_page():
     st.title("Object Detection")
 
-    st.markdown(
-        "Object detection using **YOLOv8 (ONNX Runtime, CPU-only)**."
-    )
+    st.markdown("YOLOv8 (ONNX Runtime, CPU-only)")
 
-    conf_thresh = st.slider(
-        "Confidence Threshold",
-        0.05,
-        0.95,
-        0.25,
-        0.05
-    )
+    conf = st.slider("Confidence Threshold", 0.05, 0.95, 0.25, 0.05)
 
-    uploaded_file = st.file_uploader(
-        "",
-        type=["jpg", "jpeg", "png"]
-    )
+    uploaded_file = st.file_uploader("", type=["jpg", "jpeg", "png"])
 
     if uploaded_file:
         img = Image.open(uploaded_file).convert("RGB")
 
         with st.spinner("Running object detection..."):
-            detections, vis_img = detect_image_pil(img, conf_thresh)
+            detections, vis_img = detect_image_pil(img, conf)
 
-        st.image(
-            vis_img,
-            caption="Detection Output",
-            use_container_width=True
-        )
+        st.image(vis_img, caption="Detection Output", use_container_width=True)
 
         st.subheader("Detection Results")
 
         if not detections:
-            st.warning("No objects detected above the confidence threshold.")
+            st.warning("No objects detected.")
         else:
             for d in detections:
-                st.write(
-                    f"**{d['class']}** — {d['confidence']:.2f}"
-                )
+                st.write(f"**{d['class']}** — {d['confidence']:.2f}")
 
 # ============================================================
 # MODEL COMPARISON
@@ -147,7 +123,6 @@ def model_comparison_page():
     st.title("Model Comparison")
 
     st.markdown("### Classification Models")
-
     st.markdown(
         """
         • VGG16  
@@ -158,10 +133,7 @@ def model_comparison_page():
     )
 
     st.markdown("### Detection Model")
-
-    st.markdown(
-        "• YOLOv8 (ONNX Runtime, CPU-only)"
-    )
+    st.markdown("• YOLOv8 (ONNX Runtime, CPU-only)")
 
 # ============================================================
 # ABOUT
@@ -172,12 +144,12 @@ def about_page():
 
     st.markdown(
         """
-        **SmartVision AI** is designed for **real-world deployment**, not demos.
+        SmartVision AI is built for **deployment**, not experimentation.
 
         • ONNX inference  
         • No OpenCV dependency  
-        • Cloud-safe architecture  
-        • CPU-only execution  
+        • Cloud-safe  
+        • CPU-only  
         """
     )
 
