@@ -1,18 +1,34 @@
 import streamlit as st
 from PIL import Image
 
-# -------------------- IMPORTS (UNCHANGED) --------------------
-from classification.classifier import classify_image
+# ============================================================
+# SAFE IMPORTS (Cloud + Local compatible)
+# ============================================================
+
+try:
+    # Preferred import (if folder is named 'classification')
+    from classification.classifier import classify_image
+except ModuleNotFoundError:
+    # Fallback import (if folder is named 'classifiers')
+    from classifiers.classifier import classify_image
+
 from detection.yolo_detect import detect_image_pil
 
-# -------------------- PAGE CONFIG --------------------
+
+# ============================================================
+# PAGE CONFIG
+# ============================================================
+
 st.set_page_config(
     page_title="SmartVision AI",
     page_icon="🧠",
     layout="wide"
 )
 
-# -------------------- SIDEBAR --------------------
+# ============================================================
+# SIDEBAR NAVIGATION
+# ============================================================
+
 st.sidebar.title("Navigation")
 page = st.sidebar.radio(
     "Go to",
@@ -28,13 +44,13 @@ page = st.sidebar.radio(
 # ============================================================
 # HOME
 # ============================================================
+
 def home_page():
     st.title("SmartVision AI")
 
     st.markdown(
         """
-        **SmartVision AI** is a **deployment-grade computer vision system**  
-        designed for real-world inference, not demos.
+        **SmartVision AI** is a **deployment-grade computer vision system**.
         """
     )
 
@@ -42,30 +58,25 @@ def home_page():
 
     st.markdown(
         """
-        • **Image Classification** using ImageNet-trained CNNs  
-        • **Object Detection** using YOLOv8 (ONNX Runtime)  
-        • **CPU-only inference**, fully Streamlit-Cloud safe  
+        • Image Classification (ImageNet CNNs)  
+        • Object Detection (YOLOv8 – ONNX Runtime)  
+        • CPU-only, Streamlit-Cloud safe  
         """
     )
 
-    st.markdown("---")
-
     st.info(
-        "This application focuses on **robust inference pipelines**, "
-        "model compatibility, and cloud-safe deployment practices."
+        "This project focuses on **robust inference pipelines**, "
+        "cloud compatibility, and real-world deployment."
     )
 
 # ============================================================
 # IMAGE CLASSIFICATION
 # ============================================================
+
 def classification_page():
     st.title("Image Classification")
 
-    st.markdown(
-        """
-        Upload an image to classify it using multiple **ImageNet-trained CNN models**.
-        """
-    )
+    st.markdown("Upload an image to classify it using ImageNet-trained models.")
 
     uploaded_file = st.file_uploader(
         "",
@@ -91,22 +102,20 @@ def classification_page():
 # ============================================================
 # OBJECT DETECTION
 # ============================================================
+
 def detection_page():
     st.title("Object Detection")
 
     st.markdown(
-        """
-        Perform **real-time object detection** using **YOLOv8 exported to ONNX**  
-        and executed via **ONNX Runtime (CPU-only)**.
-        """
+        "Object detection using **YOLOv8 (ONNX Runtime, CPU-only)**."
     )
 
     conf_thresh = st.slider(
         "Confidence Threshold",
-        min_value=0.05,
-        max_value=0.95,
-        value=0.25,
-        step=0.05
+        0.05,
+        0.95,
+        0.25,
+        0.05
     )
 
     uploaded_file = st.file_uploader(
@@ -132,38 +141,32 @@ def detection_page():
             st.warning("No objects detected above the confidence threshold.")
         else:
             for d in detections:
-                st.write(
-                    f"**{d['class']}** — {d['confidence']:.2f}"
-                )
+                st.write(f"**{d['class']}** — {d['confidence']:.2f}")
 
 # ============================================================
 # MODEL COMPARISON
 # ============================================================
+
 def model_comparison_page():
     st.title("Model Comparison")
 
     st.markdown("### Classification Models")
-
     st.markdown(
         """
-        • **VGG16**  
-        • **ResNet50**  
-        • **MobileNetV2**  
-        • **EfficientNetB0**
+        • VGG16  
+        • ResNet50  
+        • MobileNetV2  
+        • EfficientNetB0  
         """
     )
 
     st.markdown("### Detection Model")
-
-    st.markdown(
-        """
-        • **YOLOv8 (ONNX Runtime, CPU-only)**
-        """
-    )
+    st.markdown("• YOLOv8 (ONNX Runtime, CPU-only)")
 
 # ============================================================
 # ABOUT
 # ============================================================
+
 def about_page():
     st.title("About SmartVision AI")
 
@@ -171,20 +174,17 @@ def about_page():
         """
         **SmartVision AI** is designed for **real-world deployment**, not demos.
 
-        ### Core Principles
-        • ONNX-based inference  
+        • ONNX inference  
         • No OpenCV dependency  
         • Cloud-safe architecture  
         • CPU-only execution  
-
-        The system prioritizes **stability, portability, and reproducibility**
-        across local and cloud environments.
         """
     )
 
 # ============================================================
 # ROUTER
 # ============================================================
+
 def main():
     if page == "Home":
         home_page()
