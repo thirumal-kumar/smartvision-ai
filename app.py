@@ -122,6 +122,7 @@ def detection_page():
         st.warning("No objects detected above the confidence threshold.")
     else:
         for d in detections:
+            conf = d.get("confidence", d.get("conf", 0.0))
             st.write(
                 f"{d['class']} | "
                 f"Confidence: {d['confidence']:.2f} | "
