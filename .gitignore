@@ -1,0 +1,22 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Streamlit
+.streamlit/
+.cache/
+
+# Results / outputs
+results/
+
+# OS
+Thumbs.db
+.DS_Store
