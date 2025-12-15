@@ -5,7 +5,6 @@ from PIL import Image
 # CORRECT PACKAGE IMPORTS
 # ============================================================
 
-from classification.classifier import classify_image
 from detection.yolo_detect import detect_image_pil
 
 # ============================================================
