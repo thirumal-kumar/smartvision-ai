@@ -3,7 +3,9 @@ import onnxruntime as ort
 from PIL import Image, ImageDraw
 import streamlit as st
 
-# COCO class labels
+# -----------------------------------------------------------------------------
+# COCO CLASS LABELS (80)
+# -----------------------------------------------------------------------------
 COCO_CLASSES = [
     "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
     "traffic light","fire hydrant","stop sign","parking meter","bench","bird","cat",
@@ -21,9 +23,9 @@ COCO_CLASSES = [
 MODEL_PATH = "yolov8n.onnx"
 IMG_SIZE = 640
 
-# ---------------------------------------------------------------------
-# Load ONNX session
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# ONNX SESSION (cached)
+# -----------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_session():
     return ort.InferenceSession(
@@ -31,28 +33,28 @@ def load_session():
         providers=["CPUExecutionProvider"]
     )
 
-# ---------------------------------------------------------------------
-# Preprocess
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# PREPROCESS
+# -----------------------------------------------------------------------------
 def preprocess(img: Image.Image):
     img = img.resize((IMG_SIZE, IMG_SIZE))
-    arr = np.array(img).astype(np.float32) / 255.0
+    arr = np.asarray(img, dtype=np.float32) / 255.0
     arr = np.transpose(arr, (2, 0, 1))
     arr = np.expand_dims(arr, axis=0)
     return arr
 
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # NMS
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 def nms(boxes, scores, iou_thresh=0.45):
     idxs = scores.argsort()[::-1]
     keep = []
 
-    while len(idxs) > 0:
+    while idxs.size > 0:
         i = idxs[0]
         keep.append(i)
 
-        if len(idxs) == 1:
+        if idxs.size == 1:
             break
 
         xx1 = np.maximum(boxes[i, 0], boxes[idxs[1:], 0])
@@ -70,29 +72,41 @@ def nms(boxes, scores, iou_thresh=0.45):
 
     return keep
 
-# ---------------------------------------------------------------------
-# Detection
-# ---------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# DETECTION (FINAL, SAFE)
+# -----------------------------------------------------------------------------
 def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     session = load_session()
     orig_w, orig_h = img.size
 
-    input_tensor = preprocess(img)
-    preds = session.run(None, {"images": input_tensor})[0][0]
+    inp = preprocess(img)
+    preds = session.run(None, {"images": inp})[0][0]
 
     boxes, scores, class_ids = [], [], []
 
     for p in preds:
-        obj_conf = p[4]
+        if len(p) < 6:
+            continue  # malformed row
+
+        obj_conf = float(p[4])
         class_scores = p[5:]
+
         cls_id = int(np.argmax(class_scores))
-        score = obj_conf * class_scores[cls_id]
+        cls_conf = float(class_scores[cls_id])
+        score = obj_conf * cls_conf
 
         if score < conf_thresh:
             continue
 
-        # xywh → xyxy (model space)
+        # Clamp class id safely
+        if cls_id < 0 or cls_id >= len(COCO_CLASSES):
+            label = "unknown"
+        else:
+            label = COCO_CLASSES[cls_id]
+
         x, y, w, h = p[:4]
+
+        # Scale to original image
         x1 = (x - w / 2) * orig_w / IMG_SIZE
         y1 = (y - h / 2) * orig_h / IMG_SIZE
         x2 = (x + w / 2) * orig_w / IMG_SIZE
@@ -100,13 +114,14 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
 
         boxes.append([x1, y1, x2, y2])
         scores.append(score)
-        class_ids.append(cls_id)
+        class_ids.append(label)
 
     if not boxes:
         return [], img
 
-    boxes = np.array(boxes)
-    scores = np.array(scores)
+    boxes = np.array(boxes, dtype=np.float32)
+    scores = np.array(scores, dtype=np.float32)
+
     keep = nms(boxes, scores)
 
     draw = ImageDraw.Draw(img)
@@ -114,8 +129,7 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
 
     for i in keep:
         x1, y1, x2, y2 = boxes[i]
-        cls_id = class_ids[i]
-        label = COCO_CLASSES[cls_id]
+        label = class_ids[i]
         score = scores[i]
 
         draw.rectangle([x1, y1, x2, y2], outline="lime", width=3)
