@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw
 import streamlit as st
 
 # -----------------------------------------------------------------------------
-# COCO CLASS LABELS (80)
+# COCO CLASS LABELS (YOLOv8)
 # -----------------------------------------------------------------------------
 COCO_CLASSES = [
     "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
@@ -24,7 +24,7 @@ MODEL_PATH = "yolov8n.onnx"
 IMG_SIZE = 640
 
 # -----------------------------------------------------------------------------
-# ONNX SESSION (cached)
+# LOAD ONNX SESSION
 # -----------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_session():
@@ -73,40 +73,36 @@ def nms(boxes, scores, iou_thresh=0.45):
     return keep
 
 # -----------------------------------------------------------------------------
-# DETECTION (FINAL, SAFE)
+# YOLOv8 ONNX DETECTION (CORRECT)
 # -----------------------------------------------------------------------------
 def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     session = load_session()
     orig_w, orig_h = img.size
 
-    inp = preprocess(img)
-    preds = session.run(None, {"images": inp})[0][0]
+    preds = session.run(None, {"images": preprocess(img)})[0][0]
 
-    boxes, scores, class_ids = [], [], []
+    boxes, scores, labels = [], [], []
 
     for p in preds:
         if len(p) < 6:
-            continue  # malformed row
+            continue
 
-        obj_conf = float(p[4])
-        class_scores = p[5:]
-
+        class_scores = p[4:]
         cls_id = int(np.argmax(class_scores))
-        cls_conf = float(class_scores[cls_id])
-        score = obj_conf * cls_conf
+        score = float(class_scores[cls_id])
 
         if score < conf_thresh:
             continue
 
-        # Clamp class id safely
-        if cls_id < 0 or cls_id >= len(COCO_CLASSES):
-            label = "unknown"
-        else:
-            label = COCO_CLASSES[cls_id]
+        label = (
+            COCO_CLASSES[cls_id]
+            if 0 <= cls_id < len(COCO_CLASSES)
+            else "unknown"
+        )
 
         x, y, w, h = p[:4]
 
-        # Scale to original image
+        # Scale from 640 → original image
         x1 = (x - w / 2) * orig_w / IMG_SIZE
         y1 = (y - h / 2) * orig_h / IMG_SIZE
         x2 = (x + w / 2) * orig_w / IMG_SIZE
@@ -114,7 +110,7 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
 
         boxes.append([x1, y1, x2, y2])
         scores.append(score)
-        class_ids.append(label)
+        labels.append(label)
 
     if not boxes:
         return [], img
@@ -129,7 +125,7 @@ def detect_image_pil(img: Image.Image, conf_thresh=0.25):
 
     for i in keep:
         x1, y1, x2, y2 = boxes[i]
-        label = class_ids[i]
+        label = labels[i]
         score = scores[i]
 
         draw.rectangle([x1, y1, x2, y2], outline="lime", width=3)
