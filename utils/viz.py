@@ -1,17 +1,19 @@
 # utils/viz.py
+
 import io
-from PIL import Image
 import numpy as np
-import cv2
+from PIL import Image
 
-def pil_to_bytes(img_pil, fmt='PNG'):
-    buf = io.BytesIO()
-    img_pil.save(buf, format=fmt)
-    buf.seek(0)
-    return buf
+def np_bgr_to_bytes(img_bgr: np.ndarray) -> bytes:
+    """
+    Convert a BGR NumPy image to PNG bytes for Streamlit display.
+    Safe for Streamlit Cloud (lazy cv2 import).
+    """
+    import cv2  # 🔑 LAZY IMPORT — DO NOT MOVE
 
-def np_bgr_to_bytes(img_bgr, fmt='PNG'):
-    # convert BGR (OpenCV) to RGB PIL then bytes
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-    pil = Image.fromarray(img_rgb)
-    return pil_to_bytes(pil, fmt=fmt)
+    img_pil = Image.fromarray(img_rgb)
+
+    buf = io.BytesIO()
+    img_pil.save(buf, format="PNG")
+    return buf.getvalue()
