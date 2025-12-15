@@ -42,8 +42,6 @@ def home_page():
     - 🧠 Image classification using pretrained CNNs  
     - 🎯 Object detection using **YOLOv8 (ONNX Runtime, CPU-only)**  
     - ☁️ Deployment-ready architecture (no OpenCV / no Torch at runtime)  
-
-    This design ensures reliable execution on platforms such as **Streamlit Cloud**.
     """)
 
 # -----------------------------------------------------------------------------
@@ -98,7 +96,7 @@ def detection_page():
         key="det"
     )
 
-    conf = st.slider(
+    conf_thres = st.slider(
         "Confidence threshold",
         min_value=0.10,
         max_value=0.90,
@@ -114,7 +112,7 @@ def detection_page():
     st.image(img, caption="Input Image", width=450)
 
     with st.spinner("Running YOLOv8 ONNX inference…"):
-        detections = detect_image_pil(img, conf=conf)
+        detections = detect_image_pil(img, conf=conf_thres)
 
     st.subheader("Detection Results")
 
@@ -122,11 +120,15 @@ def detection_page():
         st.warning("No objects detected above the confidence threshold.")
     else:
         for d in detections:
-            conf = d.get("confidence", d.get("conf", 0.0))
+            # 🔑 SAFE FIELD NORMALIZATION
+            label = d.get("class", "unknown")
+            confidence = d.get("confidence", d.get("conf", 0.0))
+            bbox = d.get("bbox", [])
+
             st.write(
-                f"{d['class']} | "
-                f"Confidence: {d['confidence']:.2f} | "
-                f"Bounding Box: {d['bbox']}"
+                f"{label} | "
+                f"Confidence: {confidence:.2f} | "
+                f"Bounding Box: {bbox}"
             )
 
 # -----------------------------------------------------------------------------
@@ -163,11 +165,6 @@ def about_page():
     - Modular architecture
     - Streamlit Cloud compatibility
     - Separation of inference and UI layers
-
-    This project is suitable for:
-    - Research demos  
-    - Teaching computer vision  
-    - Portfolio and prototype deployments  
     """)
 
 # -----------------------------------------------------------------------------
