@@ -1,7 +1,6 @@
 # app.py
 import streamlit as st
 from PIL import Image
-import os
 
 from classification.models_loader import predict_topk
 from detection.yolo_detect import detect_image_pil
@@ -37,17 +36,14 @@ def sidebar():
 # -----------------------------------------------------------------------------
 def home_page():
     st.title(APP_TITLE)
-
     st.markdown("""
-    **SmartVision AI** is a modular computer vision platform that demonstrates:
+    **SmartVision AI** is a cloud-safe computer vision application demonstrating:
 
-    - 🔍 **Image Classification** using pretrained CNN architectures  
-    - 🎯 **Object Detection** using **YOLOv8 (ONNX, CPU-only)**  
-    - ☁️ **Cloud-safe deployment** (no native GUI dependencies)  
-    - 🧩 Clean, extensible architecture suitable for research and demos  
+    - 🧠 Image classification using pretrained CNNs  
+    - 🎯 Object detection using **YOLOv8 (ONNX Runtime, CPU-only)**  
+    - ☁️ Deployment-ready architecture (no OpenCV / no Torch at runtime)  
 
-    This deployment uses **ONNX Runtime** for object detection to ensure
-    maximum compatibility with cloud environments such as **Streamlit Cloud**.
+    This design ensures reliable execution on platforms such as **Streamlit Cloud**.
     """)
 
 # -----------------------------------------------------------------------------
@@ -91,7 +87,7 @@ def classification_page():
                     st.error(str(e))
 
 # -----------------------------------------------------------------------------
-# OBJECT DETECTION (ONNX)
+# OBJECT DETECTION (YOLOv8 ONNX)
 # -----------------------------------------------------------------------------
 def detection_page():
     st.header("Object Detection – YOLOv8 (ONNX, CPU)")
@@ -125,11 +121,11 @@ def detection_page():
     if not detections:
         st.warning("No objects detected above the confidence threshold.")
     else:
-        for det in detections:
+        for d in detections:
             st.write(
-                f"Class ID: {det['class']} | "
-                f"Confidence: {det['conf']:.2f} | "
-                f"Bounding Box: {det['xyxy']}"
+                f"{d['class']} | "
+                f"Confidence: {d['confidence']:.2f} | "
+                f"Bounding Box: {d['bbox']}"
             )
 
 # -----------------------------------------------------------------------------
@@ -140,29 +136,16 @@ def model_comparison_page():
 
     st.markdown("""
     ### Classification Models
-
-    **VGG16**
-    - Deep, classical CNN  
-    - High accuracy, high compute cost  
-
-    **ResNet50**
-    - Residual connections  
-    - Excellent generalization  
-
-    **MobileNetV2**
-    - Lightweight and fast  
-    - Suitable for edge devices  
-
-    **EfficientNetB0**
-    - Compound scaling strategy  
-    - Strong accuracy-to-size ratio  
+    - **VGG16** – deep and accurate, higher compute cost  
+    - **ResNet50** – balanced performance and robustness  
+    - **MobileNetV2** – lightweight and fast  
+    - **EfficientNetB0** – optimal scaling strategy  
 
     ### Object Detection
-
-    **YOLOv8 (ONNX Runtime)**
-    - Real-time object detection  
-    - CPU-only inference  
-    - Cloud-safe deployment  
+    - **YOLOv8 (ONNX Runtime)**  
+      - CPU-only inference  
+      - No native GUI dependencies  
+      - Cloud-safe deployment  
     """)
 
 # -----------------------------------------------------------------------------
@@ -172,20 +155,18 @@ def about_page():
     st.header("About SmartVision AI")
 
     st.markdown("""
-    SmartVision AI is designed as a **deployment-ready demonstration**
-    of modern computer vision pipelines.
+    SmartVision AI demonstrates **deployment-grade computer vision pipelines**.
 
-    ### Key Design Choices
-    - ONNX Runtime for object detection (no GPU, no OpenCV)  
-    - Modular architecture  
-    - Streamlit Cloud compatibility  
-    - Suitable for research demos, teaching, and prototyping  
+    **Key design decisions:**
+    - ONNX Runtime for object detection stability
+    - Modular architecture
+    - Streamlit Cloud compatibility
+    - Separation of inference and UI layers
 
-    ### Future Extensions
-    - Bounding-box visualization using PIL  
-    - Video inference  
-    - Custom-trained ONNX models  
-    - Analytics dashboards  
+    This project is suitable for:
+    - Research demos  
+    - Teaching computer vision  
+    - Portfolio and prototype deployments  
     """)
 
 # -----------------------------------------------------------------------------
@@ -204,7 +185,6 @@ def main():
         model_comparison_page()
     elif page == "About":
         about_page()
-
 
 if __name__ == "__main__":
     main()
