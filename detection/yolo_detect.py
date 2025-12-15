@@ -1,12 +1,29 @@
-# detection/yolo_detect.py
 import numpy as np
 import onnxruntime as ort
+from PIL import Image, ImageDraw
 import streamlit as st
-from PIL import Image
 
-MODEL_PATH = "detection/yolov8n.onnx"
+# COCO class labels
+COCO_CLASSES = [
+    "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
+    "traffic light","fire hydrant","stop sign","parking meter","bench","bird","cat",
+    "dog","horse","sheep","cow","elephant","bear","zebra","giraffe","backpack",
+    "umbrella","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball",
+    "kite","baseball bat","baseball glove","skateboard","surfboard","tennis racket",
+    "bottle","wine glass","cup","fork","knife","spoon","bowl","banana","apple",
+    "sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake","chair",
+    "couch","potted plant","bed","dining table","toilet","tv","laptop","mouse",
+    "remote","keyboard","cell phone","microwave","oven","toaster","sink",
+    "refrigerator","book","clock","vase","scissors","teddy bear","hair drier",
+    "toothbrush"
+]
+
+MODEL_PATH = "yolov8n.onnx"
 IMG_SIZE = 640
 
+# ---------------------------------------------------------------------
+# Load ONNX session
+# ---------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_session():
     return ort.InferenceSession(
@@ -14,27 +31,100 @@ def load_session():
         providers=["CPUExecutionProvider"]
     )
 
-def preprocess(img_pil: Image.Image):
-    img = img_pil.resize((IMG_SIZE, IMG_SIZE))
-    img = np.array(img).astype(np.float32) / 255.0
-    img = np.transpose(img, (2, 0, 1))   # HWC → CHW
-    img = np.expand_dims(img, axis=0)    # add batch
-    return img
+# ---------------------------------------------------------------------
+# Preprocess
+# ---------------------------------------------------------------------
+def preprocess(img: Image.Image):
+    img = img.resize((IMG_SIZE, IMG_SIZE))
+    arr = np.array(img).astype(np.float32) / 255.0
+    arr = np.transpose(arr, (2, 0, 1))
+    arr = np.expand_dims(arr, axis=0)
+    return arr
 
-def detect_image_pil(img_pil, conf=0.25):
+# ---------------------------------------------------------------------
+# NMS
+# ---------------------------------------------------------------------
+def nms(boxes, scores, iou_thresh=0.45):
+    idxs = scores.argsort()[::-1]
+    keep = []
+
+    while len(idxs) > 0:
+        i = idxs[0]
+        keep.append(i)
+
+        if len(idxs) == 1:
+            break
+
+        xx1 = np.maximum(boxes[i, 0], boxes[idxs[1:], 0])
+        yy1 = np.maximum(boxes[i, 1], boxes[idxs[1:], 1])
+        xx2 = np.minimum(boxes[i, 2], boxes[idxs[1:], 2])
+        yy2 = np.minimum(boxes[i, 3], boxes[idxs[1:], 3])
+
+        inter = np.maximum(0, xx2 - xx1) * np.maximum(0, yy2 - yy1)
+        area_i = (boxes[i, 2] - boxes[i, 0]) * (boxes[i, 3] - boxes[i, 1])
+        area_j = (boxes[idxs[1:], 2] - boxes[idxs[1:], 0]) * \
+                 (boxes[idxs[1:], 3] - boxes[idxs[1:], 1])
+
+        iou = inter / (area_i + area_j - inter + 1e-6)
+        idxs = idxs[1:][iou < iou_thresh]
+
+    return keep
+
+# ---------------------------------------------------------------------
+# Detection
+# ---------------------------------------------------------------------
+def detect_image_pil(img: Image.Image, conf_thresh=0.25):
     session = load_session()
-    inp = preprocess(img_pil)
+    orig_w, orig_h = img.size
 
-    outputs = session.run(None, {"images": inp})[0]
+    input_tensor = preprocess(img)
+    preds = session.run(None, {"images": input_tensor})[0][0]
 
-    detections = []
-    for det in outputs[0]:
-        score = det[4]
-        if score >= conf:
-            detections.append({
-                "xyxy": det[:4].tolist(),
-                "conf": float(score),
-                "class": int(det[5])
-            })
+    boxes, scores, class_ids = [], [], []
 
-    return detections
+    for p in preds:
+        obj_conf = p[4]
+        class_scores = p[5:]
+        cls_id = int(np.argmax(class_scores))
+        score = obj_conf * class_scores[cls_id]
+
+        if score < conf_thresh:
+            continue
+
+        # xywh → xyxy (model space)
+        x, y, w, h = p[:4]
+        x1 = (x - w / 2) * orig_w / IMG_SIZE
+        y1 = (y - h / 2) * orig_h / IMG_SIZE
+        x2 = (x + w / 2) * orig_w / IMG_SIZE
+        y2 = (y + h / 2) * orig_h / IMG_SIZE
+
+        boxes.append([x1, y1, x2, y2])
+        scores.append(score)
+        class_ids.append(cls_id)
+
+    if not boxes:
+        return [], img
+
+    boxes = np.array(boxes)
+    scores = np.array(scores)
+    keep = nms(boxes, scores)
+
+    draw = ImageDraw.Draw(img)
+    results = []
+
+    for i in keep:
+        x1, y1, x2, y2 = boxes[i]
+        cls_id = class_ids[i]
+        label = COCO_CLASSES[cls_id]
+        score = scores[i]
+
+        draw.rectangle([x1, y1, x2, y2], outline="lime", width=3)
+        draw.text((x1 + 4, y1 + 4), f"{label} {score:.2f}", fill="lime")
+
+        results.append({
+            "class": label,
+            "confidence": float(score),
+            "bbox": [float(x1), float(y1), float(x2), float(y2)]
+        })
+
+    return results, img
